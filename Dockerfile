@@ -26,4 +26,4 @@ COPY --from=builder /app/main .
 EXPOSE 8080
 
 # Запустите приложение
-CMD ["./main"]
+CMD ["main"]
