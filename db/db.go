@@ -20,7 +20,7 @@ type SnapInfoStore struct {
 // NewStore создает новый пул соединений с базой данных
 func NewSnapInfoStore(user, password, dbName string) (*SnapInfoStore, error) {
 	// DSN (Data Source Name)
-	dsn := fmt.Sprintf("%s:%s@tcp(127.0.0.1:3306)/%s", user, password, dbName)
+dsn := fmt.Sprintf("%s:%s@tcp(db:3306)/%s", user, password, dbName)
 
 	// Настройка пула соединений
 	db, err := sql.Open("mysql", dsn)
