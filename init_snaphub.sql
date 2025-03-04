@@ -1,6 +1,12 @@
 -- Создание базы данных snabhub, если она не существует
 CREATE DATABASE IF NOT EXISTS snaphub;
+CREATE USER IF NOT EXISTS 'kranid'@'%' IDENTIFIED BY 'your_password';
 
+-- Назначаем права на SELECT, INSERT и UPDATE для базы данных snaphub
+GRANT SELECT, INSERT, UPDATE ON snaphub.* TO 'kranid'@'%';
+
+-- Применяем изменения
+FLUSH PRIVILEGES;
 -- Использование созданной базы данных
 USE snaphub;
 
