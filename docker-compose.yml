@@ -1,0 +1,38 @@
+version: '3.7'
+
+services:
+  db:
+    image: mysql:5.7
+    container_name: snaphub_db
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init_snaphub.sql
+    ports:
+      - "3306:3306"
+    restart: always
+
+  app:
+    build:
+      context: .                  # Указывает на использование текущей директории как контекст сборки
+      dockerfile: Dockerfile      # Указывает имя Dockerfile (если файл называется просто "Dockerfile", можно не указывать)
+    container_name: snaphub_app
+    environment:
+      API_ACCESS_KEY: ${API_ACCESS_KEY}
+      API_SECRET_KEY: ${API_SECRET_KEY}
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: ${MYSQL_USER}
+      DB_PASS: ${MYSQL_ROOT_PASSWORD}
+      DB_NAME: ${MYSQL_DATABASE}
+    ports:
+      - "8080:8080"               # Настройте этот порт на то, какой у вас используется в Go приложении
+    depends_on:
+      - db
+    restart: always
+
+volumes:
+  db_data:
