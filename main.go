@@ -76,7 +76,7 @@ func main() {
 	m := http.NewServeMux()
 	m.Handle("POST /snaphub/add", addHandler(snapHub))
 	m.Handle("GET /snaphub/get/{name}", getHandler(snapHub))
-	err = http.ListenAndServe(":5000", m)
+	err = http.ListenAndServe(":8080", m)
 	if err != nil {
 		fmt.Println("Не удалось запустить сервер")
 		return
