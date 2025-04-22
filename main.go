@@ -62,13 +62,14 @@ func getHandler(sh *SnapHub) http.HandlerFunc {
 }
 
 func main() {
+	fmt.Println("run snaphub app")
 	config := config.InitConfig()
 	infostore, err := db.NewSnapInfoStore(config.DBUser, config.DBPass, config.DBName)
 	if err != nil {
 		panic(err)
 	}
 	defer infostore.DB.Close()
-	snapStore := jsonbin.JsonBinNew(config.ApiKey, config.AccessKey)
+	snapStore := jsonbin.JsonBinNew(config.MasterKey, config.AccessKey)
 	snapHub, err := SnapHubNew(infostore, snapStore)
 	if err != nil {
 		panic(err)

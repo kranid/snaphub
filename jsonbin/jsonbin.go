@@ -28,15 +28,15 @@ type BinCreateResp struct {
 }
 
 type SnapStore struct {
-	ApiKey    string
+	MasterKey    string
 	AccessKey string
 	rootUrl   string
 }
 
-func JsonBinNew(apiKey, accessKey string) SnapStore {
+func JsonBinNew(masterKey, accessKey string) SnapStore {
 	return SnapStore{
 		AccessKey: accessKey,
-		ApiKey:    apiKey,
+		MasterKey:    masterKey,
 		rootUrl:   "https://api.jsonbin.io/v3/b",
 	}
 }
@@ -44,7 +44,7 @@ func JsonBinNew(apiKey, accessKey string) SnapStore {
 func (jb SnapStore) Create(body io.Reader, name string) (string, error) {
 	req, _ := http.NewRequest(http.MethodPost, jb.rootUrl, body)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Master-Key", jb.ApiKey)
+	req.Header.Set("X-Master-Key", jb.MasterKey)
 	req.Header.Set("X-Access-Key", jb.AccessKey)
 	req.Header.Set("X-Bin-Name", name)
 	resp, err := http.DefaultClient.Do(req)
@@ -69,7 +69,7 @@ func (jb SnapStore) Get(id string) (json.RawMessage, error) {
 	url := fmt.Sprintf("%s/%s", jb.rootUrl, id)
 	fmt.Printf("url: %s \n", url)
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	req.Header.Set("X-Master-Key", jb.ApiKey)
+	req.Header.Set("X-Master-Key", jb.MasterKey)
 	req.Header.Set("X-Access-Key", jb.AccessKey)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
