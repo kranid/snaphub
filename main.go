@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,8 +12,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
-	_ "github.com/go-sql-driver/mysql" // Важно: "_" для инициализации драйвера
+	 _ "github.com/go-sql-driver/mysql"
 	"github.com/kranid/snaphub/config"
 	"github.com/kranid/snaphub/db"
 	"github.com/kranid/snaphub/file_utils"
@@ -132,24 +134,47 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 				return
 			}
 
+			// Десериализуем JSON, чтобы затем отформатировать его
+			var rawJson interface{}
+			err = json.Unmarshal(buf.Bytes(), &rawJson)
+			if err != nil {
+				log.Printf("ERROR: Failed to unmarshal JSON from %s: %v", formFileName, err)
+				http.Error(w, fmt.Sprintf("Failed to process JSON from %s", formFileName), http.StatusInternalServerError)
+				return
+			}
+
+			// Форматируем JSON с отступами
+			formattedJsonBytes, err := json.MarshalIndent(rawJson, "", "  ")
+			if err != nil {
+				log.Printf("ERROR: Failed to marshal JSON for %s: %v", formFileName, err)
+				http.Error(w, fmt.Sprintf("Failed to format JSON for %s", formFileName), http.StatusInternalServerError)
+				return
+			}
+
+			// Нормализуем переносы строк для JSON-файлов (LF -> CRLF)
+			jsonContent := string(formattedJsonBytes)
+			normalizedJsonContent := strings.ReplaceAll(jsonContent, "\r\n", "\n") // Сначала убираем все CRLF
+			normalizedJsonContent = strings.ReplaceAll(normalizedJsonContent, "\n", "\r\n") // Затем заменяем все LF на CRLF
+			normalizedBuf := bytes.NewBufferString(normalizedJsonContent)
+
 			// Сохраняем файл на диск
 			diskFileName := dataType + ".json" // Формируем имя файла на диске
 			dstPath := filepath.Join(snapshotDir, diskFileName)
-			if err := file_utils.SaveFileFromReader(bytes.NewReader(buf.Bytes()), dstPath); err != nil {
+			if err := file_utils.SaveFileFromReader(bytes.NewReader(normalizedBuf.Bytes()), dstPath); err != nil {
 				log.Printf("ERROR: Failed to save file '%s': %v", dstPath, err)
 				http.Error(w, "Failed to save file", http.StatusInternalServerError)
 				return
 			}
 			log.Printf("INFO: Successfully saved file to disk: %s", dstPath)
 
-			// Отправляем содержимое буфера в JSONBin
+			// Отправляем содержимое нормализованного буфера в JSONBin
 			jsonBinName := fmt.Sprintf("%d_%s", snapshotID, dataType) // Используем dataType
 			info := db.SnapInfo{
 				Name:        jsonBinName,
 				PackageName: packageName,
 			}
 
-			snapInfoID, err := sh.Add(bytes.NewReader(buf.Bytes()), info) // Используем bytes.NewReader
+			snapInfoID, err := sh.Add(bytes.NewReader(normalizedBuf.Bytes()), info) // Используем bytes.NewReader
 			if err != nil {
 				log.Printf("ERROR: Failed to add %s via SnapHub.Add: %v", formFileName, err)
 				http.Error(w, fmt.Sprintf("Failed to add %s", formFileName), http.StatusInternalServerError)
