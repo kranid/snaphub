@@ -38,6 +38,8 @@ services:
       db:
         condition: service_healthy
     restart: always
+    volumes:
+      - ./data/snapshots:/app/snapshots
 
 volumes:
   db_data:

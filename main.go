@@ -122,8 +122,8 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 			}
 			defer file.Close()
 
-			// Создаем уникальное имя для JSONBin
-			jsonBinName := fmt.Sprintf("snapshot_%d_%s", snapshotID, dataType)
+			// Создаем уникальное имя для JSONBin, используя snapshotID
+			jsonBinName := fmt.Sprintf("%d_%s", snapshotID, dataType)
 
 			// Создаем SnapInfo для передачи в SnapHub.Add
 			info := db.SnapInfo{
