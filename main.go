@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	_ "github.com/go-sql-driver/mysql" // Важно: "_" для инициализации драйвера
 	"github.com/kranid/snaphub/config"
 	"github.com/kranid/snaphub/db"
+	"github.com/kranid/snaphub/file_utils"
 	"github.com/kranid/snaphub/jsonbin"
 )
 
@@ -105,15 +107,15 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 		}
 		log.Printf("INFO: Created snapshot directory: %s", snapshotDir)
 
-		// 5. Сохранение JSON-файлов в JSONBin и связывание в БД
-		jsonFilesToUpload := map[string]string{
+		// 5. Сохранение JSON-файлов на диск и в JSONBin
+		jsonFilesToProcess := map[string]string{
 			"original_snapshot": "original",
 			"expected_snapshot": "expected",
 			"tech_report":       "technical_report",
 			"human_report":      "human_report",
 		}
 
-		for formFileName, dataType := range jsonFilesToUpload {
+		for formFileName, dataType := range jsonFilesToProcess { // dataType теперь корректно определен
 			file, _, err := r.FormFile(formFileName)
 			if err != nil {
 				log.Printf("WARN: Failed to get JSON file %s from form: %v", formFileName, err)
@@ -122,16 +124,32 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 			}
 			defer file.Close()
 
-			// Создаем уникальное имя для JSONBin, используя snapshotID
-			jsonBinName := fmt.Sprintf("%d_%s", snapshotID, dataType)
+			// Читаем содержимое файла в буфер
+			buf := new(bytes.Buffer)
+			if _, err := io.Copy(buf, file); err != nil {
+				log.Printf("ERROR: Failed to read %s into buffer: %v", formFileName, err)
+				http.Error(w, fmt.Sprintf("Failed to read %s", formFileName), http.StatusInternalServerError)
+				return
+			}
 
-			// Создаем SnapInfo для передачи в SnapHub.Add
+			// Сохраняем файл на диск
+			diskFileName := dataType + ".json" // Формируем имя файла на диске
+			dstPath := filepath.Join(snapshotDir, diskFileName)
+			if err := file_utils.SaveFileFromReader(bytes.NewReader(buf.Bytes()), dstPath); err != nil {
+				log.Printf("ERROR: Failed to save file '%s': %v", dstPath, err)
+				http.Error(w, "Failed to save file", http.StatusInternalServerError)
+				return
+			}
+			log.Printf("INFO: Successfully saved file to disk: %s", dstPath)
+
+			// Отправляем содержимое буфера в JSONBin
+			jsonBinName := fmt.Sprintf("%d_%s", snapshotID, dataType) // Используем dataType
 			info := db.SnapInfo{
 				Name:        jsonBinName,
 				PackageName: packageName,
 			}
 
-			snapInfoID, err := sh.Add(file, info) // Используем sh.Add
+			snapInfoID, err := sh.Add(bytes.NewReader(buf.Bytes()), info) // Используем bytes.NewReader
 			if err != nil {
 				log.Printf("ERROR: Failed to add %s via SnapHub.Add: %v", formFileName, err)
 				http.Error(w, fmt.Sprintf("Failed to add %s", formFileName), http.StatusInternalServerError)
@@ -140,7 +158,7 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 			log.Printf("INFO: Successfully added %s to JSONBin and DB with snap_info ID: %d", formFileName, snapInfoID)
 
 			// Связываем в snapshot_json_links
-			err = sh.InfoStore.AddSnapshotJsonLink(snapshotID, snapInfoID, dataType)
+			err = sh.InfoStore.AddSnapshotJsonLink(snapshotID, snapInfoID, dataType) // Используем dataType
 			if err != nil {
 				log.Printf("ERROR: Failed to link %s (snap_info ID: %d) to snapshot record: %v", formFileName, snapInfoID, err)
 				http.Error(w, fmt.Sprintf("Failed to link %s to snapshot record", formFileName), http.StatusInternalServerError)
@@ -149,7 +167,7 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 			log.Printf("INFO: Linked %s (snap_info ID: %d) to snapshot ID: %d", formFileName, snapInfoID, snapshotID)
 		}
 
-		// 6. Сохранение скриншота на диск
+		// 6. Сохранение скриншота на диск (используем новую утилиту)
 		screenshotFile, _, err := r.FormFile("screenshot")
 		if err != nil {
 			log.Printf("WARN: Failed to get screenshot file from form: %v", err)
@@ -157,15 +175,7 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 		} else {
 			defer screenshotFile.Close()
 			dstPath := filepath.Join(snapshotDir, "screenshot.jpg")
-			dst, err := os.Create(dstPath)
-			if err != nil {
-				log.Printf("ERROR: Failed to create screenshot file '%s': %v", dstPath, err)
-				http.Error(w, "Failed to create screenshot file", http.StatusInternalServerError)
-				return
-			}
-			defer dst.Close()
-
-			if _, err := io.Copy(dst, screenshotFile); err != nil {
+			if err := file_utils.SaveFileFromReader(screenshotFile, dstPath); err != nil {
 				log.Printf("ERROR: Failed to save screenshot file '%s': %v", dstPath, err)
 				http.Error(w, "Failed to save screenshot file", http.StatusInternalServerError)
 				return
