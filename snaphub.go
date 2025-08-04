@@ -25,20 +25,23 @@ func SnapHubNew(infoStore *db.SnapInfoStore, snapStore jsonbin.SnapStore) (*Snap
 	}, nil
 }
 
-func (sh *SnapHub) Add(body io.Reader, info db.SnapInfo) (int64, error) { // Изменено: теперь возвращает int64, error
+func (sh *SnapHub) Add(body io.Reader, info db.SnapInfo) (int64, error) {
 	log.Printf("SnapHub: Adding snap with name = %s, packagename =%s", info.Name, info.PackageName)
 	jsonBinID, err := sh.SnapStore.Create(body, info.Name)
 	if err != nil {
-		log.Printf("ERROR: SnapHub failed to create JSONBin: %v", err)
-		return 0, err
+		log.Printf("WARN: SnapHub failed to create JSONBin for %s: %v. Proceeding without JSONBin ID.", info.Name, err)
+		info.JBId = "" // Ensure JBId is empty if creation failed
+	} else {
+		info.JBId = jsonBinID
+		log.Printf("SnapHub: Successfully added snap with JSONBin ID: %s", jsonBinID)
 	}
-	info.JBId = jsonBinID
+
 	snapInfoID, err := sh.InfoStore.AddSnapInfo(info) // Получаем ID из AddSnapInfo
 	if err != nil {
 		log.Printf("ERROR: SnapHub failed to add snap info to DB: %v", err)
 		return 0, err
 	}
-	log.Printf("SnapHub: Successfully added snap with JSONBin ID: %s and DB ID: %d", jsonBinID, snapInfoID)
+	log.Printf("SnapHub: Successfully added snap info to DB with ID: %d", snapInfoID)
 	return snapInfoID, nil // Возвращаем ID из DB
 }
 

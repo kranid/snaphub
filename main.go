@@ -134,6 +134,22 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 				return
 			}
 
+			// Check if the JSON is empty
+			if len(buf.Bytes()) == 0 || string(buf.Bytes()) == "{}" || string(buf.Bytes()) == "[]" {
+				log.Printf("INFO: Skipping empty JSON for %s. Saving to disk only.", formFileName)
+
+				// Сохраняем файл на диск
+				diskFileName := dataType + ".json" // Формируем имя файла на диске
+				dstPath := filepath.Join(snapshotDir, diskFileName)
+				if err := file_utils.SaveFileFromReader(bytes.NewReader(buf.Bytes()), dstPath); err != nil {
+					log.Printf("ERROR: Failed to save file '%s': %v", dstPath, err)
+					http.Error(w, "Failed to save file", http.StatusInternalServerError)
+					return
+				}
+				log.Printf("INFO: Successfully saved empty JSON file to disk: %s", dstPath)
+				continue // Пропускаем отправку в JSONBin и сохранение в БД
+			}
+
 			// Десериализуем JSON, чтобы затем отформатировать его
 			var rawJson interface{}
 			err = json.Unmarshal(buf.Bytes(), &rawJson)
@@ -176,20 +192,24 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 
 			snapInfoID, err := sh.Add(bytes.NewReader(normalizedBuf.Bytes()), info) // Используем bytes.NewReader
 			if err != nil {
-				log.Printf("ERROR: Failed to add %s via SnapHub.Add: %v", formFileName, err)
-				http.Error(w, fmt.Sprintf("Failed to add %s", formFileName), http.StatusInternalServerError)
-				return
+				log.Printf("WARN: Failed to add %s to JSONBin and DB: %v. Proceeding without JSONBin ID.", formFileName, err)
+				snapInfoID = 0 // Устанавливаем snapInfoID в 0, чтобы не пытаться связать с несуществующей записью
+			} else {
+				log.Printf("INFO: Successfully added %s to JSONBin and DB with snap_info ID: %d", formFileName, snapInfoID)
 			}
-			log.Printf("INFO: Successfully added %s to JSONBin and DB with snap_info ID: %d", formFileName, snapInfoID)
 
 			// Связываем в snapshot_json_links
-			err = sh.InfoStore.AddSnapshotJsonLink(snapshotID, snapInfoID, dataType) // Используем dataType
-			if err != nil {
-				log.Printf("ERROR: Failed to link %s (snap_info ID: %d) to snapshot record: %v", formFileName, snapInfoID, err)
-				http.Error(w, fmt.Sprintf("Failed to link %s to snapshot record", formFileName), http.StatusInternalServerError)
-				return
+			if snapInfoID != 0 { // Проверяем, что snapInfoID был успешно получен
+				err = sh.InfoStore.AddSnapshotJsonLink(snapshotID, snapInfoID, dataType) // Используем dataType
+				if err != nil {
+					log.Printf("ERROR: Failed to link %s (snap_info ID: %d) to snapshot record: %v", formFileName, snapInfoID, err)
+					// Не возвращаем ошибку клиенту, так как это не фатально для всего запроса
+				} else {
+					log.Printf("INFO: Linked %s (snap_info ID: %d) to snapshot ID: %d", formFileName, snapInfoID, snapshotID)
+				}
+			} else {
+				log.Printf("WARN: Skipping linking for %s as snap_info ID was not obtained.", formFileName)
 			}
-			log.Printf("INFO: Linked %s (snap_info ID: %d) to snapshot ID: %d", formFileName, snapInfoID, snapshotID)
 		}
 
 		// 6. Сохранение скриншота на диск (используем новую утилиту)
