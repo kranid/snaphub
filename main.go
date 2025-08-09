@@ -114,7 +114,7 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 			"original_snapshot": "original",
 			"expected_snapshot": "expected",
 			"tech_report":       "technical_report",
-			"human_report":      "human_report",
+			"human_report":      "descriptive_report",
 		}
 
 		for formFileName, dataType := range jsonFilesToProcess { // dataType теперь корректно определен

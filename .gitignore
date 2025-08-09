@@ -16,7 +16,7 @@ Thumbs.db
 bin/
 build/
 vendor/
-
+data
 # Кэш и временные файлы
 *.out
 *.a
