@@ -84,7 +84,11 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 		// 2. Получение текстовых полей
 		packageName := r.FormValue("package_name")
 		activityName := r.FormValue("activity_name")
-		log.Printf("INFO: addSnapshotHandler params: package_name='%s', activity_name='%s'", packageName, activityName)
+		deviceModel := r.FormValue("device_model")
+		if deviceModel == "" {
+			deviceModel = "unknown"
+		}
+		log.Printf("INFO: addSnapshotHandler params: package_name='%s', activity_name='%s', device_model='%s'", packageName, activityName, deviceModel)
 		if packageName == "" || activityName == "" {
 			log.Println("WARN: addSnapshotHandler missing package_name or activity_name")
 			http.Error(w, "package_name and activity_name are required", http.StatusBadRequest)
@@ -92,7 +96,8 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 		}
 
 		// 3. Создание записи в БД (таблица snapshots)
-		snapshotID, err := sh.InfoStore.CreateSnapshotRecord(packageName, activityName)
+		dbPackageName := fmt.Sprintf("%s/%s", packageName, deviceModel)
+		snapshotID, err := sh.InfoStore.CreateSnapshotRecord(dbPackageName, activityName)
 		if err != nil {
 			log.Printf("ERROR: Failed to create snapshot record: %v", err)
 			http.Error(w, "Failed to create snapshot record", http.StatusInternalServerError)
@@ -101,7 +106,7 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 		log.Printf("INFO: Created new snapshot record with ID: %d", snapshotID)
 
 		// 4. Создание папки для снапшотов на диске
-		snapshotDir := filepath.Join("snapshots", packageName, strconv.FormatInt(snapshotID, 10))
+		snapshotDir := filepath.Join("snapshots", packageName, deviceModel, strconv.FormatInt(snapshotID, 10))
 		if err := os.MkdirAll(snapshotDir, os.ModePerm); err != nil {
 			log.Printf("ERROR: Failed to create snapshot directory '%s': %v", snapshotDir, err)
 			http.Error(w, "Failed to create snapshot directory", http.StatusInternalServerError)
@@ -212,21 +217,20 @@ func addSnapshotHandler(sh *SnapHub) http.HandlerFunc { // Изменено: т�
 			}
 		}
 
-		// 6. Сохранение скриншота на диск (используем новую утилиту)
-		screenshotFile, _, err := r.FormFile("screenshot")
+		// 6. Сохранение скриншота на диск (обязательно)
+		screenshotDstPath := filepath.Join(snapshotDir, "screenshot.jpg")
+		saved, err := file_utils.SaveUploadedFile(r, "screenshot", screenshotDstPath)
 		if err != nil {
-			log.Printf("WARN: Failed to get screenshot file from form: %v", err)
-			// Скриншот может быть необязательным, поэтому не возвращаем ошибку
-		} else {
-			defer screenshotFile.Close()
-			dstPath := filepath.Join(snapshotDir, "screenshot.jpg")
-			if err := file_utils.SaveFileFromReader(screenshotFile, dstPath); err != nil {
-				log.Printf("ERROR: Failed to save screenshot file '%s': %v", dstPath, err)
-				http.Error(w, "Failed to save screenshot file", http.StatusInternalServerError)
-				return
-			}
-			log.Printf("INFO: Successfully saved screenshot: %s", dstPath)
+			log.Printf("ERROR: Failed to save screenshot file '%s': %v", screenshotDstPath, err)
+			http.Error(w, "Failed to save screenshot file", http.StatusInternalServerError)
+			return
 		}
+		if !saved {
+			log.Println("ERROR: Mandatory screenshot file 'screenshot' not found in form.")
+			http.Error(w, "Mandatory screenshot file 'screenshot' is missing", http.StatusBadRequest)
+			return
+		}
+		log.Printf("INFO: Successfully saved screenshot: %s", screenshotDstPath)
 
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "Snapshot saved successfully with ID: %d", snapshotID)
